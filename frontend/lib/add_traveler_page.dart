@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'config.dart';
 import 'widgets/custom_button.dart';
 import 'widgets/custom_text_field.dart';
 
@@ -150,7 +151,7 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
       if (refreshToken == null) return null;
 
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/token/refresh/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refreshToken}),
       );
@@ -243,8 +244,8 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
 
       Future<http.Response> sendRequest(String? token) {
         final uri = isEdit
-            ? Uri.parse('http://127.0.0.1:8000/user/api/update-traveler/$travelerId/')
-            : Uri.parse('http://127.0.0.1:8000/user/api/create-traveler/');
+            ? Uri.parse('${AppConfig.baseUrl}/user/api/update-traveler/$travelerId/')
+            : Uri.parse('${AppConfig.baseUrl}/user/api/create-traveler/');
         final headers = {
           if (token != null) 'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -348,7 +349,7 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
     try {
       Future<http.Response> sendRequest(String? token) {
         return http.delete(
-          Uri.parse('http://127.0.0.1:8000/user/api/delete-traveler/$travelerId/'),
+          Uri.parse('${AppConfig.baseUrl}/user/api/delete-traveler/$travelerId/'),
           headers: {
             if (token != null) 'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
+import 'config.dart';
 import 'dart:convert';
 import 'widgets/custom_button.dart';
 import 'widgets/custom_text_field.dart';
@@ -39,7 +40,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/register/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/register/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'username': usernameController.text,

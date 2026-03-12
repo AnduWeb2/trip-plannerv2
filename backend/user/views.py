@@ -1,13 +1,41 @@
 from django.shortcuts import render
-import anthropic
+from google import genai
+from google.genai import errors, types
 import base64
 import json
+import pycountry
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .serializer import UserRegisterSerializer, LogoutSerializer, TravelerProfileSerializer, TravelerProfileGetSerializer, TravelerDocumentSerializer
 from .models import TravelerProfile, TravelerDocument
 import os
+
+
+def normalize_country_code(value):
+    if not value or not isinstance(value, str):
+        return value
+
+    code = value.strip().upper()
+    if len(code) == 2:
+        return code
+
+    if len(code) == 3:
+        country = pycountry.countries.get(alpha_3=code)
+        if country:
+            return country.alpha_2
+
+    return code
+
+
+def normalize_scan_document_payload(payload):
+    if not isinstance(payload, dict):
+        return payload
+
+    for field in ('nationality', 'issuanceCountry'):
+        payload[field] = normalize_country_code(payload.get(field))
+
+    return payload
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -114,57 +142,76 @@ def scan_document(request):
     except (ValueError, IndexError):
         return Response({'error': 'Invalid image format'}, status=400)
 
-    api_key = os.environ.get('CLAUDE_API_KEY')
+    api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key:
-        return Response({'error': 'Claude API key not configured'}, status=500)
+        return Response({'error': 'Gemini API key not configured'}, status=500)
+
+    schema = {
+        'type': 'OBJECT',
+        'properties': {
+            'first_name': {'type': 'STRING', 'nullable': True},
+            'last_name': {'type': 'STRING', 'nullable': True},
+            'date_of_birth': {'type': 'STRING', 'nullable': True},
+            'gender': {'type': 'STRING', 'nullable': True},
+            'nationality': {'type': 'STRING', 'nullable': True},
+            'documentType': {'type': 'STRING', 'nullable': True},
+            'documentNumber': {'type': 'STRING', 'nullable': True},
+            'issuanceDate': {'type': 'STRING', 'nullable': True},
+            'expiryDate': {'type': 'STRING', 'nullable': True},
+            'issuanceCountry': {'type': 'STRING', 'nullable': True},
+            'issuanceLocation': {'type': 'STRING', 'nullable': True},
+        },
+        'required': [
+            'first_name',
+            'last_name',
+            'date_of_birth',
+            'gender',
+            'nationality',
+            'documentType',
+            'documentNumber',
+            'issuanceDate',
+            'expiryDate',
+            'issuanceCountry',
+            'issuanceLocation',
+        ],
+    }
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model='claude-opus-4-5',
-            max_tokens=1024,
-            messages=[
-                {
-                    'role': 'user',
-                    'content': [
-                        {
-                            'type': 'image',
-                            'source': {
-                                'type': 'base64',
-                                'media_type': media_type,
-                                'data': b64data,
-                            },
-                        },
-                        {
-                            'type': 'text',
-                            'text': (
-                                'Extract the following fields from this identity document image and return ONLY a valid JSON object '
-                                'with these exact keys (use null for any field you cannot find):\n'
-                                '- first_name (string)\n'
-                                '- last_name (string)\n'
-                                '- date_of_birth (string, format YYYY-MM-DD)\n'
-                                '- gender (string, either "Male" or "Female")\n'
-                                '- nationality (string, 2-letter ISO country code, e.g. RO)\n'
-                                '- documentType (string, either "PASSPORT" or "ID")\n'
-                                '- documentNumber (string)\n'
-                                '- issuanceDate (string, format YYYY-MM-DD)\n'
-                                '- expiryDate (string, format YYYY-MM-DD)\n'
-                                '- issuanceCountry (string, 2-letter ISO country code)\n'
-                                '- issuanceLocation (string or null)\n'
-                                'Return only the JSON, no explanation.'
-                            ),
-                        },
-                    ],
-                }
-            ],
-        )
-        raw = message.content[0].text.strip()
-        # Strip markdown code fences if present
+        image_bytes = base64.b64decode(b64data)
+
+        with genai.Client(api_key=api_key) as client:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                    (
+                        'Extract traveler identity document data. '
+                        'Return country codes strictly as ISO 3166-1 alpha-2 codes only, like RO, FR, US. '
+                        'Never return 3-letter country codes like ROU or USA. '
+                        'Dates must be in YYYY-MM-DD format. '
+                        'Set missing or uncertain fields to null.'
+                    ),
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type='application/json',
+                    response_schema=schema,
+                    temperature=0,
+                ),
+            )
+
+        if response.parsed is not None:
+            return Response(normalize_scan_document_payload(response.parsed), status=200)
+
+        raw = (response.text or '').strip()
         if raw.startswith('```'):
             raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+
         extracted = json.loads(raw)
-        return Response(extracted, status=200)
+        return Response(normalize_scan_document_payload(extracted), status=200)
     except json.JSONDecodeError:
-        return Response({'error': 'Claude returned invalid JSON'}, status=502)
+        return Response({'error': 'Gemini returned invalid JSON'}, status=502)
+    except errors.APIError as e:
+        status_code = e.code if isinstance(e.code, int) else 502
+        return Response({'error': e.message}, status=status_code)
     except Exception as e:
         return Response({'error': str(e)}, status=502)

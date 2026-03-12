@@ -6,6 +6,7 @@ import '../widgets/airport_search_field.dart';
 import 'flight_results_page.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'config.dart';
 import 'dart:convert';
 
 class FlightAvailabilityPage extends StatefulWidget {
@@ -86,7 +87,7 @@ class _FlightAvailabilityPageState extends State<FlightAvailabilityPage> {
       if (tripType == 'round' && returnDate != null) {
         queryParams['arrivalDate'] = formatDate(returnDate!);
       }
-      final uri = Uri.parse('http://127.0.0.1:8000/user/api/search-flight/').replace(queryParameters: queryParams);
+      final uri = Uri.parse('${AppConfig.baseUrl}/user/api/search-flight/').replace(queryParameters: queryParams);
       Future<http.Response> sendRequest(String? token) {
         return http.get(
           uri,
@@ -164,7 +165,7 @@ class _FlightAvailabilityPageState extends State<FlightAvailabilityPage> {
       if (refreshToken == null) return null;
 
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/token/refresh/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refreshToken}),
       );

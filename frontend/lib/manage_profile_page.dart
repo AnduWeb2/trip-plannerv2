@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'config.dart';
 import 'add_traveler_page.dart';
 import 'traveler_input_choice_page.dart';
 
@@ -44,7 +45,7 @@ class _ManageProfilePageState extends State<ManageProfilePage> {
     try {
       final token = await storage.read(key: 'access_token');
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:8000/user/api/get-travelers'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/get-travelers'),
         headers: {'Authorization': 'Bearer $token'},
       );
       if (response.statusCode == 200) {

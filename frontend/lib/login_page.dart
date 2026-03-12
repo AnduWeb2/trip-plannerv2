@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'widgets/custom_button.dart';
@@ -25,7 +26,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/token/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/token/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'username': usernameController.text,
@@ -43,7 +44,7 @@ class _LoginPageState extends State<LoginPage> {
 
         try {
           final travelersResponse = await http.get(
-            Uri.parse('http://127.0.0.1:8000/user/api/get-travelers'),
+            Uri.parse('${AppConfig.baseUrl}/user/api/get-travelers'),
             headers: {'Authorization': 'Bearer $accessToken'},
           );
           if (travelersResponse.statusCode == 200) {

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'config.dart';
 import 'add_traveler_page.dart';
 
 class TravelerInputChoicePage extends StatelessWidget {
@@ -77,7 +78,7 @@ class TravelerInputChoicePage extends StatelessWidget {
       String? token = await storage.read(key: 'access_token');
 
       Future<http.Response> sendRequest(String? t) => http.post(
-            Uri.parse('http://127.0.0.1:8000/user/api/scan-document/'),
+            Uri.parse('${AppConfig.baseUrl}/user/api/scan-document/'),
             headers: {
               if (t != null) 'Authorization': 'Bearer $t',
               'Content-Type': 'application/json',
@@ -91,7 +92,7 @@ class TravelerInputChoicePage extends StatelessWidget {
         final refreshToken = await storage.read(key: 'refresh_token');
         if (refreshToken != null) {
           final refreshResp = await http.post(
-            Uri.parse('http://127.0.0.1:8000/user/api/token/refresh/'),
+            Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'refresh': refreshToken}),
           );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 
 class AirportSearchField extends StatefulWidget {
   final String label;
@@ -70,7 +71,7 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
     try {
       final token = await _storage.read(key: 'access_token');
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:8000/user/api/select-destination/$query/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/select-destination/$query/'),
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
         },

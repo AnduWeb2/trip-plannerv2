@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'config.dart';
 
 class FlightConfirmPage extends StatefulWidget {
   final Map<String, dynamic> flight;
@@ -41,7 +42,7 @@ class _FlightConfirmPageState extends State<FlightConfirmPage> {
 
       Future<http.Response> sendRequest(String? token) {
         return http.post(
-          Uri.parse('http://127.0.0.1:8000/user/api/price-offer/'),
+          Uri.parse('${AppConfig.baseUrl}/user/api/price-offer/'),
           headers: {
             if (token != null) 'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',
@@ -98,7 +99,7 @@ class _FlightConfirmPageState extends State<FlightConfirmPage> {
       if (refreshToken == null) return null;
 
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/token/refresh/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh': refreshToken}),
       );

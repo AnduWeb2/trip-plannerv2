@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'dart:ui';
@@ -28,7 +29,7 @@ class _HomePageState extends State<HomePage> {
       final accessToken = await storage.read(key: 'access_token');
 
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/user/api/logout/'),
+        Uri.parse('${AppConfig.baseUrl}/user/api/logout/'),
         headers: {
           'Content-Type': 'application/json',
           if (accessToken != null) 'Authorization': 'Bearer $accessToken',
