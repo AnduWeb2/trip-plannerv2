@@ -1,9 +1,11 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from amadeus import Client, ResponseError, Location
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+from .models import FlightBooking
 
 load_dotenv()
 CLIENT_ID = os.environ.get('CLIENT_ID')
@@ -242,8 +244,83 @@ def book_flight(request):
 	try:
 		amadeus = get_amadeus_client()
 		payload = request.data
-		response = amadeus.booking.flight_orders.post(payload)
-		return Response(response.data, status=200)
+		data = payload.get('data', {}) if isinstance(payload, dict) else {}
+		flight_offers = data.get('flightOffers', [])
+		travelers_list = data.get('travelers', [])
+
+		if not flight_offers:
+			return Response({'error': 'No flight offers provided'}, status=400)
+		if not travelers_list:
+			return Response({'error': 'No travelers provided'}, status=400)
+
+		response = amadeus.booking.flight_orders.post(flight_offers, travelers_list)
+		amadeus_data = response.data
+
+		# Extract summary info for the local DB record
+		associated = amadeus_data.get('associatedRecords', [])
+		pnr = associated[0].get('reference', '') if associated else ''
+		order_id = amadeus_data.get('id', '')
+
+		flight_offers = amadeus_data.get('flightOffers', [])
+		offer = flight_offers[0] if flight_offers else {}
+		itineraries = offer.get('itineraries', [])
+		segments = itineraries[0].get('segments', []) if itineraries else []
+
+		first_seg = segments[0] if segments else {}
+		last_seg = segments[-1] if segments else first_seg
+
+		dep_raw = first_seg.get('departure', {}).get('at', '')
+		arr_raw = last_seg.get('arrival', {}).get('at', '')
+
+		price_info = offer.get('price', {})
+		carrier_code = first_seg.get('carrierCode', '')
+
+		# Try to resolve airline name
+		airline_name = carrier_code
+		try:
+			airline_resp = amadeus.reference_data.airlines.get(airlineCodes=carrier_code)
+			if airline_resp.data:
+				airline_name = airline_resp.data[0].get('businessName') or carrier_code
+		except Exception:
+			pass
+
+		# Resolve check-in link
+		checkin_link = ''
+		if carrier_code:
+			try:
+				checkin_resp = amadeus.reference_data.urls.checkin_links.get(airlineCode=carrier_code)
+				if checkin_resp.data:
+					checkin_link = checkin_resp.data[0].get('href') or checkin_resp.data[0].get('url') or ''
+			except Exception:
+				pass
+
+		# Determine trip type from number of itineraries
+		trip_type = 'round' if len(itineraries) > 1 else 'oneway'
+
+		booking = FlightBooking.objects.create(
+			user=request.user,
+			amadeus_order_id=order_id,
+			pnr=pnr,
+			airline_name=airline_name,
+			origin=first_seg.get('departure', {}).get('iataCode', ''),
+			destination=last_seg.get('arrival', {}).get('iataCode', ''),
+			departure_at=dep_raw or datetime.now().isoformat(),
+			arrival_at=arr_raw or datetime.now().isoformat(),
+			stops=max(len(segments) - 1, 0),
+			price_total=price_info.get('total', '0'),
+			price_currency=price_info.get('currency', 'EUR'),
+			trip_type=trip_type,
+			checkin_link=checkin_link,
+			amadeus_response=amadeus_data,
+		)
+
+		return Response({
+			'id': booking.id,
+			'pnr': pnr,
+			'amadeus_order_id': order_id,
+			'status': booking.status,
+			'message': 'Flight booked successfully',
+		}, status=201)
 	except ResponseError as error:
 		details = None
 		try:
@@ -253,4 +330,45 @@ def book_flight(request):
 		return Response({'error': str(error), 'details': details}, status=400)
 	except Exception as e:
 		return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_bookings(request):
+	bookings = FlightBooking.objects.filter(user=request.user)
+	data = []
+	for b in bookings:
+		data.append({
+			'id': b.id,
+			'pnr': b.pnr,
+			'amadeus_order_id': b.amadeus_order_id,
+			'airline_name': b.airline_name,
+			'origin': b.origin,
+			'destination': b.destination,
+			'departure_at': b.departure_at.strftime('%Y-%m-%d %H:%M'),
+			'arrival_at': b.arrival_at.strftime('%Y-%m-%d %H:%M'),
+			'stops': b.stops,
+			'price_total': str(b.price_total),
+			'price_currency': b.price_currency,
+			'trip_type': b.trip_type,
+			'checkin_link': b.checkin_link,
+			'status': b.status,
+			'created_at': b.created_at.strftime('%Y-%m-%d %H:%M'),
+		})
+	return Response(data, status=200)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def cancel_booking(request, pk):
+	try:
+		booking = FlightBooking.objects.get(pk=pk, user=request.user)
+	except FlightBooking.DoesNotExist:
+		return Response({'error': 'Booking not found'}, status=404)
+
+	if booking.status == 'CANCELLED':
+		return Response({'error': 'Booking is already cancelled'}, status=400)
+
+	booking.status = 'CANCELLED'
+	booking.save()
+	return Response({'message': 'Booking cancelled', 'status': booking.status}, status=200)
 

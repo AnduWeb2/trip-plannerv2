@@ -129,18 +129,33 @@ def delete_traveler(request,pk):
     return Response({"message": "Traveler deleted succesfully"}, status=200)
 
 
+def _parse_data_uri(data_uri):
+    """Parse a data URI and return (image_bytes, media_type)."""
+    header, b64data = data_uri.split(',', 1)
+    media_type = header.split(';')[0].split(':')[1]
+    return base64.b64decode(b64data), media_type
+
+
 @api_view(['POST'])
 def scan_document(request):
-    data_uri = request.data.get('image')
-    if not data_uri:
+    # Accept both old single-image format and new front/back format
+    front_uri = request.data.get('front_image') or request.data.get('image')
+    back_uri = request.data.get('back_image')
+
+    if not front_uri:
         return Response({'error': 'No image provided'}, status=400)
 
-    # Parse "data:image/jpeg;base64,<data>"
     try:
-        header, b64data = data_uri.split(',', 1)
-        media_type = header.split(';')[0].split(':')[1]  # e.g. image/jpeg
+        front_bytes, front_mime = _parse_data_uri(front_uri)
     except (ValueError, IndexError):
-        return Response({'error': 'Invalid image format'}, status=400)
+        return Response({'error': 'Invalid front image format'}, status=400)
+
+    back_bytes, back_mime = None, None
+    if back_uri:
+        try:
+            back_bytes, back_mime = _parse_data_uri(back_uri)
+        except (ValueError, IndexError):
+            return Response({'error': 'Invalid back image format'}, status=400)
 
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key:
@@ -176,22 +191,32 @@ def scan_document(request):
         ],
     }
 
-    try:
-        image_bytes = base64.b64decode(b64data)
+    # Build the image parts for the Gemini request
+    image_parts = [
+        types.Part.from_bytes(data=front_bytes, mime_type=front_mime),
+    ]
+    if back_bytes and back_mime:
+        image_parts.append(
+            types.Part.from_bytes(data=back_bytes, mime_type=back_mime),
+        )
 
+    has_back = back_bytes is not None
+    prompt = (
+        'Extract traveler identity document data from the provided image(s). '
+        + ('The first image is the FRONT of the document and the second image is the BACK. '
+           'Combine information from both sides into a single result. '
+           if has_back else '')
+        + 'Return country codes strictly as ISO 3166-1 alpha-2 codes only, like RO, FR, US. '
+        'Never return 3-letter country codes like ROU or USA. '
+        'Dates must be in YYYY-MM-DD format. '
+        'Set missing or uncertain fields to null.'
+    )
+
+    try:
         with genai.Client(api_key=api_key) as client:
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                    (
-                        'Extract traveler identity document data. '
-                        'Return country codes strictly as ISO 3166-1 alpha-2 codes only, like RO, FR, US. '
-                        'Never return 3-letter country codes like ROU or USA. '
-                        'Dates must be in YYYY-MM-DD format. '
-                        'Set missing or uncertain fields to null.'
-                    ),
-                ],
+                contents=[*image_parts, prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type='application/json',
                     response_schema=schema,

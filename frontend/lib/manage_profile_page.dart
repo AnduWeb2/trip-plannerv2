@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'config.dart';
 import 'add_traveler_page.dart';
 import 'traveler_input_choice_page.dart';
+import 'my_bookings_page.dart';
 
 class ManageProfilePage extends StatefulWidget {
   const ManageProfilePage({super.key});
@@ -89,6 +90,19 @@ class _ManageProfilePageState extends State<ManageProfilePage> {
                 MaterialPageRoute(builder: (context) => const TravelerInputChoicePage()),
               );
               if (result == true) await _refreshTravelers();
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildOptionTile(
+            context,
+            icon: Icons.flight,
+            title: 'My Bookings',
+            subtitle: 'View and manage your booked flights',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MyBookingsPage()),
+              );
             },
           ),
           if (isLoading) ...[  

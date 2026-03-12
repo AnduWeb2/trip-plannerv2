@@ -6,4 +6,6 @@ urlpatterns = [
     path('api/search-flight/', views.search_flight, name="search_flight"),
     path('api/price-offer/', views.price_offer, name="price_offer"),
     path('api/book-flight/', views.book_flight, name="book_flight"),
+    path('api/bookings/', views.get_bookings, name="get_bookings"),
+    path('api/bookings/<int:pk>/cancel/', views.cancel_booking, name="cancel_booking"),
 ]
