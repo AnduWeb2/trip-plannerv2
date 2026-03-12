@@ -13,5 +13,6 @@ urlpatterns = [
     path('api/create-traveler/', views.create_traveler, name="create_traveler"),
     path('api/get-travelers', views.get_travelers, name="get_travelers"),
     path('api/update-traveler/<int:pk>/', views.update_traveler, name="update_traveler"),
-    path('api/delete-traveler/<int:pk>/', views.delete_traveler, name="delete_traveler")
+    path('api/delete-traveler/<int:pk>/', views.delete_traveler, name="delete_traveler"),
+    path('api/scan-document/', views.scan_document, name="scan_document"),
 ]

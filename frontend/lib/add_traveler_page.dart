@@ -8,8 +8,9 @@ import 'widgets/custom_text_field.dart';
 
 class AddTravelerPage extends StatefulWidget {
   final Map<String, dynamic>? traveler;
+  final Map<String, dynamic>? prefillData;
 
-  const AddTravelerPage({super.key, this.traveler});
+  const AddTravelerPage({super.key, this.traveler, this.prefillData});
 
   @override
   State<AddTravelerPage> createState() => _AddTravelerPageState();
@@ -67,6 +68,26 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
         final eDate = doc['expiryDate'] as String?;
         if (eDate != null) expiryDate = DateTime.tryParse(eDate);
       }
+    }
+
+    // Pre-populate from Claude scan
+    final p = widget.prefillData;
+    if (p != null) {
+      if (p['first_name'] != null) firstNameController.text = p['first_name'];
+      if (p['last_name'] != null) lastNameController.text = p['last_name'];
+      if (p['nationality'] != null) nationalityController.text = p['nationality'];
+      if (p['gender'] != null && (p['gender'] == 'Male' || p['gender'] == 'Female')) {
+        gender = p['gender'];
+      }
+      if (p['date_of_birth'] != null) dateOfBirth = DateTime.tryParse(p['date_of_birth']);
+      if (p['documentType'] != null && (p['documentType'] == 'PASSPORT' || p['documentType'] == 'ID')) {
+        documentType = p['documentType'];
+      }
+      if (p['documentNumber'] != null) docNumberController.text = p['documentNumber'];
+      if (p['issuanceCountry'] != null) issuanceCountryController.text = p['issuanceCountry'];
+      if (p['issuanceLocation'] != null) issuanceLocationController.text = p['issuanceLocation'];
+      if (p['issuanceDate'] != null) issuanceDate = DateTime.tryParse(p['issuanceDate']);
+      if (p['expiryDate'] != null) expiryDate = DateTime.tryParse(p['expiryDate']);
     }
   }
 
@@ -572,11 +593,13 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.traveler != null ? 'Optional — update if needed' : 'Required to create a traveler',
-          style: GoogleFonts.poppins(fontSize: 13, color: widget.traveler != null ? Colors.grey[500] : Colors.red[400]),
-        ),
-        const SizedBox(height: 20),
+        if (widget.traveler == null) ...[
+          Text(
+            'Required to create a traveler',
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.red[400]),
+          ),
+          const SizedBox(height: 20),
+        ],
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
