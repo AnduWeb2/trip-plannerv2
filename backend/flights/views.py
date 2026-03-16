@@ -11,7 +11,7 @@ load_dotenv()
 def get_amadeus_client():
 	client_id = os.environ.get('AMADEUS_CLIENT_ID') or os.environ.get('CLIENT_ID')
 	client_secret = os.environ.get('AMADEUS_CLIENT_SECRET') or os.environ.get('CLIENT_SECRET')
-	hostname = os.environ.get('AMADEUS_HOSTNAME') or os.environ.get('AMADEUS_HOST')
+	hostname ='test'
 
 	if not client_id or not client_secret:
 		raise ValueError(
