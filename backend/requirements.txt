@@ -11,3 +11,4 @@ amadeus==12.0.0
 python-dotenv==1.2.2
 pycountry==26.2.16
 google-genai==1.67.0
+gunicorn==25.0.1
