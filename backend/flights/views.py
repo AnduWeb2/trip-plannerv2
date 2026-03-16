@@ -8,17 +8,24 @@ from datetime import datetime
 from .models import FlightBooking
 
 load_dotenv()
-CLIENT_ID = os.environ.get('CLIENT_ID')
-CLIENT_SECRET = os.environ.get('CLIENT_SECRET')
-
-
-
-
 def get_amadeus_client():
-	return Client(
-		client_id=CLIENT_ID,
-		client_secret=CLIENT_SECRET
-	)
+	client_id = os.environ.get('AMADEUS_CLIENT_ID') or os.environ.get('CLIENT_ID')
+	client_secret = os.environ.get('AMADEUS_CLIENT_SECRET') or os.environ.get('CLIENT_SECRET')
+	hostname = os.environ.get('AMADEUS_HOSTNAME') or os.environ.get('AMADEUS_HOST')
+
+	if not client_id or not client_secret:
+		raise ValueError(
+			'Missing Amadeus credentials. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET on server environment.'
+		)
+
+	client_kwargs = {
+		'client_id': client_id,
+		'client_secret': client_secret,
+	}
+	if hostname:
+		client_kwargs['hostname'] = hostname
+
+	return Client(**client_kwargs)
 
 
 def ensure_pricing_fields(offer, segments):

@@ -61,6 +61,13 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
     _overlay = null;
   }
 
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<String?> _refreshAccessToken() async {
     try {
       final refreshToken = await _storage.read(key: 'refresh_token');
@@ -97,8 +104,9 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
 
     try {
       String? token = await _storage.read(key: 'access_token');
+      final encodedQuery = Uri.encodeComponent(query);
       Future<http.Response> doRequest(String? t) => http.get(
-            Uri.parse('${AppConfig.baseUrl}/user/api/select-destination/$query/'),
+            Uri.parse('${AppConfig.baseUrl}/user/api/select-destination/$encodedQuery/'),
             headers: {
               if (t != null) 'Authorization': 'Bearer $t',
             },
@@ -111,6 +119,13 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
         if (refreshed != null) {
           token = refreshed;
           response = await doRequest(token);
+        } else {
+          await _storage.delete(key: 'access_token');
+          await _storage.delete(key: 'refresh_token');
+          _showError('Session expired. Please log in again.');
+          _removeOverlay();
+          if (mounted) setState(() => _suggestions = []);
+          return;
         }
       }
 
@@ -120,8 +135,23 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
           _suggestions = ((body['data'] as List?) ?? []).cast<Map<String, dynamic>>();
         });
         _showOverlay();
+      } else if (response.statusCode != 200) {
+        String message = 'Could not load airport suggestions.';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map && body['detail'] != null) {
+            message = body['detail'].toString();
+          } else if (body is Map && body['error'] != null) {
+            message = body['error'].toString();
+          }
+        } catch (_) {}
+        _showError(message);
+        _removeOverlay();
+        if (mounted) setState(() => _suggestions = []);
       }
-    } catch (_) {}
+    } catch (_) {
+      _showError('Network error while loading airport suggestions.');
+    }
 
     if (mounted) setState(() => _loading = false);
   }

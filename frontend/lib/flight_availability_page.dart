@@ -59,7 +59,18 @@ class _FlightAvailabilityPageState extends State<FlightAvailabilityPage> {
     final destination = _destinationCode ?? '';
     final adults = adultsController.text.trim();
 
-    
+    if (origin.isEmpty || destination.isEmpty) {
+      _showError('Validation', 'Please select an origin and destination airport.');
+      return;
+    }
+    if (departureDate == null) {
+      _showError('Validation', 'Please select a departure date.');
+      return;
+    }
+    if (tripType == 'round' && returnDate == null) {
+      _showError('Validation', 'Please select a return date for round-trip.');
+      return;
+    }
 
     setState(() => isLoading = true);
     try {
