@@ -41,7 +41,9 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
   void initState() {
     super.initState();
     _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) _removeOverlay();
+      if (!_focusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 150), _removeOverlay);
+      }
     });
   }
 
@@ -59,6 +61,31 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
     _overlay = null;
   }
 
+  Future<String?> _refreshAccessToken() async {
+    try {
+      final refreshToken = await _storage.read(key: 'refresh_token');
+      if (refreshToken == null) return null;
+      final response = await http.post(
+        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh': refreshToken}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final newAccess = data['access'] as String?;
+        if (newAccess != null) {
+          await _storage.write(key: 'access_token', value: newAccess);
+          final newRefresh = data['refresh'] as String?;
+          if (newRefresh != null) {
+            await _storage.write(key: 'refresh_token', value: newRefresh);
+          }
+          return newAccess;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _search(String query) async {
     if (query.length < 2) {
       _removeOverlay();
@@ -69,13 +96,23 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
     if (mounted) setState(() => _loading = true);
 
     try {
-      final token = await _storage.read(key: 'access_token');
-      final response = await http.get(
-        Uri.parse('${AppConfig.baseUrl}/user/api/select-destination/$query/'),
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
+      String? token = await _storage.read(key: 'access_token');
+      Future<http.Response> doRequest(String? t) => http.get(
+            Uri.parse('${AppConfig.baseUrl}/user/api/select-destination/$query/'),
+            headers: {
+              if (t != null) 'Authorization': 'Bearer $t',
+            },
+          );
+
+      http.Response response = await doRequest(token);
+
+      if (response.statusCode == 401) {
+        final refreshed = await _refreshAccessToken();
+        if (refreshed != null) {
+          token = refreshed;
+          response = await doRequest(token);
+        }
+      }
 
       if (response.statusCode == 200 && mounted) {
         final body = jsonDecode(response.body);
@@ -110,7 +147,7 @@ class _AirportSearchFieldState extends State<AirportSearchField> {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 shrinkWrap: true,
                 itemCount: _suggestions.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) {
                   final item = _suggestions[i];
                   final iata = item['iataCode'] as String? ?? '';

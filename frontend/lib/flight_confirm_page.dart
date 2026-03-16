@@ -31,7 +31,7 @@ class _FlightConfirmPageState extends State<FlightConfirmPage> {
     _loadTravelers();
   }
 
-  // ─── Price the offer ───────────────────────────────────────────────
+
   Future<void> _priceOffer() async {
     setState(() {
       isLoading = true;
