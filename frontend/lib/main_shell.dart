@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'home_page.dart';
 import 'flight_availability_page.dart';
 import 'manage_profile_page.dart';
+import 'hotel_map_page.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -18,7 +19,7 @@ class _MainShellState extends State<MainShell> {
     HomePage(),
     ManageProfilePage(),
     FlightAvailabilityPage(),
-    _HotelPlaceholder(),
+    HotelMapPage(),
   ];
 
   @override
@@ -114,19 +115,4 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-class _HotelPlaceholder extends StatelessWidget {
-  const _HotelPlaceholder();
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Hotels', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-        backgroundColor: const Color(0xFF5B85AA),
-        elevation: 4,
-        automaticallyImplyLeading: false,
-      ),
-      body: const SizedBox.shrink(),
-    );
-  }
-}
