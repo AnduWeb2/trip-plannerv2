@@ -16,7 +16,7 @@ class _HotelMapPageState extends State<HotelMapPage> {
   Set<Marker> _markers = {};
 
   static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(44.4268, 26.1025), // Bucuresti default
+    target: LatLng(44.4268, 26.1025), 
     zoom: 12,
   );
 
@@ -24,7 +24,7 @@ class _HotelMapPageState extends State<HotelMapPage> {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () async {
       setState(() => _loading = true);
-      // Simulează un request API și adaugă markere mock
+      
       await Future.delayed(const Duration(seconds: 1));
       setState(() {
         _markers = {
