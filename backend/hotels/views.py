@@ -78,27 +78,63 @@ def hotel_search(request):
 
     lat = input_ser.validated_data['lat']
     lng = input_ser.validated_data['lng']
-    radius = input_ser.validated_data['radius']
 
+    # Step 1: Google Reverse Geocoding → get city name
+    try:
+        geo_resp = requests.get(
+            'https://maps.googleapis.com/maps/api/geocode/json',
+            params={'latlng': f'{lat},{lng}', 'key': GOOGLE_MAPS_API_KEY, 'result_type': 'locality'},
+            timeout=5,
+        )
+        geo_resp.raise_for_status()
+        geo_data = geo_resp.json()
+        results = geo_data.get('results', [])
+        city_name = None
+        for result in results:
+            for component in result.get('address_components', []):
+                if 'locality' in component.get('types', []):
+                    city_name = component['long_name']
+                    break
+            if city_name:
+                break
+        if not city_name and results:
+            # fallback: try first formatted_address word
+            city_name = results[0].get('formatted_address', '').split(',')[0].strip()
+        print(f'[hotel_search] Reverse geocode → city_name={city_name}')
+    except requests.RequestException as e:
+        return Response({'error': f'Reverse geocode failed: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    if not city_name:
+        return Response({'hotels': [], 'warning': 'Could not determine city from coordinates.'})
+
+    # Step 2: Amadeus locations search → get IATA city code
     try:
         amadeus = get_amadeus_client()
-        print(f'[hotel_search] Calling Amadeus with lat={lat}, lng={lng}, radius={radius}')
-        response = amadeus.reference_data.locations.hotels.by_geocode.get(
-            latitude=lat,
-            longitude=lng,
-            radius=radius,
-            radiusUnit='KM',
+        loc_response = amadeus.reference_data.locations.get(
+            keyword=city_name,
+            subType='CITY',
         )
-        print(f'[hotel_search] Amadeus returned {len(response.data)} hotels')
-        if response.data:
-            print(f'[hotel_search] First hotel sample: {response.data[0]}')
+        if not loc_response.data:
+            print(f'[hotel_search] No IATA city code found for: {city_name}')
+            return Response({'hotels': [], 'warning': f'No Amadeus data for city: {city_name}'})
+        city_code = loc_response.data[0]['iataCode']
+        print(f'[hotel_search] IATA city code for {city_name} → {city_code}')
+    except ResponseError as e:
+        print(f'[hotel_search] Amadeus locations error: {e}')
+        return Response({'hotels': [], 'warning': 'Could not resolve city code.'})
+
+    # Step 3: Amadeus hotels by city code
+    try:
+        hotel_response = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
+        print(f'[hotel_search] Amadeus by_city returned {len(hotel_response.data)} hotels for {city_code}')
+        if hotel_response.data:
+            print(f'[hotel_search] First hotel sample: {hotel_response.data[0]}')
         raw_hotels = []
-        for h in response.data:
+        for h in hotel_response.data:
             geo = h.get('geoCode') or {}
             hotel_lat = geo.get('latitude')
             hotel_lng = geo.get('longitude')
             if hotel_lat is None or hotel_lng is None:
-                print(f'[hotel_search] Skipping hotel missing geoCode: {h}')
                 continue
             raw_hotels.append({
                 'hotelId': h.get('hotelId', ''),
@@ -112,18 +148,15 @@ def hotel_search(request):
         output = HotelResultSerializer(raw_hotels, many=True)
         return Response({'hotels': output.data})
     except ResponseError as error:
-        # Log full details for debugging
         try:
             err_status = error.response.status_code
             err_body = error.response.body
         except Exception:
             err_status = 'unknown'
             err_body = str(error)
-        print(f'[hotel_search] Amadeus ResponseError status={err_status} body={err_body}')
-        # Amadeus test environment returns 500 for areas with no test data.
-        # Return empty list so the map shows gracefully instead of an error.
+        print(f'[hotel_search] Amadeus by_city ResponseError status={err_status} body={err_body}')
         if str(err_status) == '500':
-            return Response({'hotels': [], 'warning': 'No hotel data available for this area in test environment.'})
+            return Response({'hotels': [], 'warning': 'No hotel data available for this city in test environment.'})
         return Response({'error': str(error), 'detail': str(err_body)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         print(f'[hotel_search] Unexpected error: {e}')
