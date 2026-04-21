@@ -1,9 +1,6 @@
-from django.shortcuts import render
-from flights.views import get_amadeus_client
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from amadeus import ResponseError
 import requests
 import os
 from .serializers import (
@@ -78,86 +75,68 @@ def hotel_search(request):
 
     lat = input_ser.validated_data['lat']
     lng = input_ser.validated_data['lng']
+    radius_km = input_ser.validated_data['radius']
+    radius_m = radius_km * 1000
 
-    # Step 1: Google Reverse Geocoding → get city name
+    overpass_query = f'''
+[out:json][timeout:20];
+(
+  node["tourism"~"hotel|hostel|motel|guest_house|apartment"](around:{radius_m},{lat},{lng});
+  way["tourism"~"hotel|hostel|motel|guest_house|apartment"](around:{radius_m},{lat},{lng});
+  relation["tourism"~"hotel|hostel|motel|guest_house|apartment"](around:{radius_m},{lat},{lng});
+);
+out center 150;
+'''
+
     try:
-        geo_resp = requests.get(
-            'https://maps.googleapis.com/maps/api/geocode/json',
-            params={'latlng': f'{lat},{lng}', 'key': GOOGLE_MAPS_API_KEY, 'result_type': 'locality'},
-            timeout=5,
+        response = requests.post(
+            'https://overpass-api.de/api/interpreter',
+            data=overpass_query,
+            headers={'Content-Type': 'text/plain'},
+            timeout=25,
         )
-        geo_resp.raise_for_status()
-        geo_data = geo_resp.json()
-        results = geo_data.get('results', [])
-        city_name = None
-        for result in results:
-            for component in result.get('address_components', []):
-                if 'locality' in component.get('types', []):
-                    city_name = component['long_name']
-                    break
-            if city_name:
-                break
-        if not city_name and results:
-            # fallback: try first formatted_address word
-            city_name = results[0].get('formatted_address', '').split(',')[0].strip()
-        print(f'[hotel_search] Reverse geocode → city_name={city_name}')
-    except requests.RequestException as e:
-        return Response({'error': f'Reverse geocode failed: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+        response.raise_for_status()
+        elements = response.json().get('elements', [])
+        print(f'[hotel_search] Overpass returned {len(elements)} elements for lat={lat} lng={lng} radius={radius_km}km')
 
-    if not city_name:
-        return Response({'hotels': [], 'warning': 'Could not determine city from coordinates.'})
+        hotels_by_id = {}
+        for element in elements:
+            tags = element.get('tags') or {}
+            if element.get('type') == 'node':
+                hotel_lat = element.get('lat')
+                hotel_lng = element.get('lon')
+            else:
+                center = element.get('center') or {}
+                hotel_lat = center.get('lat')
+                hotel_lng = center.get('lon')
 
-    # Step 2: Amadeus locations search → get IATA city code
-    try:
-        amadeus = get_amadeus_client()
-        loc_response = amadeus.reference_data.locations.get(
-            keyword=city_name,
-            subType='CITY',
-        )
-        if not loc_response.data:
-            print(f'[hotel_search] No IATA city code found for: {city_name}')
-            return Response({'hotels': [], 'warning': f'No Amadeus data for city: {city_name}'})
-        city_code = loc_response.data[0]['iataCode']
-        print(f'[hotel_search] IATA city code for {city_name} → {city_code}')
-    except ResponseError as e:
-        print(f'[hotel_search] Amadeus locations error: {e}')
-        return Response({'hotels': [], 'warning': 'Could not resolve city code.'})
-
-    # Step 3: Amadeus hotels by city code
-    try:
-        hotel_response = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
-        print(f'[hotel_search] Amadeus by_city returned {len(hotel_response.data)} hotels for {city_code}')
-        if hotel_response.data:
-            print(f'[hotel_search] First hotel sample: {hotel_response.data[0]}')
-        raw_hotels = []
-        for h in hotel_response.data:
-            geo = h.get('geoCode') or {}
-            hotel_lat = geo.get('latitude')
-            hotel_lng = geo.get('longitude')
             if hotel_lat is None or hotel_lng is None:
                 continue
-            raw_hotels.append({
-                'hotelId': h.get('hotelId', ''),
-                'name': h.get('name', ''),
+
+            hotel_id = str(element.get('id', ''))
+            name = tags.get('name') or tags.get('name:en') or 'Hotel'
+            address_parts = [
+                tags.get('addr:street', '').strip(),
+                tags.get('addr:housenumber', '').strip(),
+                tags.get('addr:city', '').strip(),
+            ]
+            address = ', '.join(part for part in address_parts if part)
+
+            hotels_by_id[hotel_id] = {
+                'hotelId': hotel_id,
+                'name': name,
                 'lat': hotel_lat,
                 'lng': hotel_lng,
-                'address': ', '.join(h.get('address', {}).get('lines', []) or []),
-                'countryCode': h.get('address', {}).get('countryCode', ''),
-            })
-        print(f'[hotel_search] Returning {len(raw_hotels)} hotels after filtering')
+                'address': address,
+                'countryCode': tags.get('addr:country', '').strip(),
+            }
+
+        raw_hotels = list(hotels_by_id.values())
         output = HotelResultSerializer(raw_hotels, many=True)
         return Response({'hotels': output.data})
-    except ResponseError as error:
-        try:
-            err_status = error.response.status_code
-            err_body = error.response.body
-        except Exception:
-            err_status = 'unknown'
-            err_body = str(error)
-        print(f'[hotel_search] Amadeus by_city ResponseError status={err_status} body={err_body}')
-        if str(err_status) == '500':
-            return Response({'hotels': [], 'warning': 'No hotel data available for this city in test environment.'})
-        return Response({'error': str(error), 'detail': str(err_body)}, status=status.HTTP_400_BAD_REQUEST)
+    except requests.RequestException as e:
+        print(f'[hotel_search] Overpass request error: {e}')
+        return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
     except Exception as e:
         print(f'[hotel_search] Unexpected error: {e}')
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

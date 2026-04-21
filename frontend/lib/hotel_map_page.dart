@@ -164,6 +164,10 @@ class _HotelMapPageState extends State<HotelMapPage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final hotels = data['hotels'] as List<dynamic>;
+        final warning = data['warning'] as String?;
+        if (warning != null && warning.isNotEmpty) {
+          debugPrint('[Hotels] warning: $warning');
+        }
         debugPrint('[Hotels] received ${hotels.length} hotels from API');
         final newMarkers = <Marker>{};
         for (final h in hotels) {
@@ -189,9 +193,17 @@ class _HotelMapPageState extends State<HotelMapPage> {
         });
       } else {
         debugPrint('[Hotels] search error ${response.statusCode}: ${response.body}');
+        setState(() {
+          _markers = {};
+          _hotelCount = 0;
+        });
       }
     } catch (e) {
       debugPrint('[Hotels] search exception: $e');
+      setState(() {
+        _markers = {};
+        _hotelCount = 0;
+      });
     } finally {
       setState(() => _loading = false);
     }
