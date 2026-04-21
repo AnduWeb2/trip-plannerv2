@@ -82,24 +82,33 @@ def hotel_search(request):
 
     try:
         amadeus = get_amadeus_client()
+        print(f'[hotel_search] Calling Amadeus with lat={lat}, lng={lng}, radius={radius}')
         response = amadeus.reference_data.locations.hotels.by_geocode.get(
             latitude=lat,
             longitude=lng,
             radius=radius,
             radiusUnit='KM',
         )
-        raw_hotels = [
-            {
+        print(f'[hotel_search] Amadeus returned {len(response.data)} hotels')
+        if response.data:
+            print(f'[hotel_search] First hotel sample: {response.data[0]}')
+        raw_hotels = []
+        for h in response.data:
+            geo = h.get('geoCode') or {}
+            hotel_lat = geo.get('latitude')
+            hotel_lng = geo.get('longitude')
+            if hotel_lat is None or hotel_lng is None:
+                print(f'[hotel_search] Skipping hotel missing geoCode: {h}')
+                continue
+            raw_hotels.append({
                 'hotelId': h.get('hotelId', ''),
                 'name': h.get('name', ''),
-                'lat': h.get('geoCode', {}).get('latitude'),
-                'lng': h.get('geoCode', {}).get('longitude'),
-                'address': ', '.join(h.get('address', {}).get('lines', [])),
+                'lat': hotel_lat,
+                'lng': hotel_lng,
+                'address': ', '.join(h.get('address', {}).get('lines', []) or []),
                 'countryCode': h.get('address', {}).get('countryCode', ''),
-            }
-            for h in response.data
-            if h.get('geoCode', {}).get('latitude') and h.get('geoCode', {}).get('longitude')
-        ]
+            })
+        print(f'[hotel_search] Returning {len(raw_hotels)} hotels after filtering')
         output = HotelResultSerializer(raw_hotels, many=True)
         return Response({'hotels': output.data})
     except ResponseError as error:
