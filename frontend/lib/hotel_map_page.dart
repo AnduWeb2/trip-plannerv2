@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -26,6 +27,9 @@ class _HotelMapPageState extends State<HotelMapPage> {
   Timer? _debounce;
   Set<Marker> _markers = {};
   int _hotelCount = 0;
+  bool _skipNextCameraIdleFetch = false;
+  int _hotelRequestId = 0;
+  LatLng? _lastFetchedCenter;
 
   // Camera tracking
   LatLng _currentCenter = const LatLng(44.4268, 26.1025);
@@ -43,6 +47,29 @@ class _HotelMapPageState extends State<HotelMapPage> {
   );
 
   Future<String?> _getToken() => _storage.read(key: 'access_token');
+
+  double _distanceKm(LatLng first, LatLng second) {
+    const earthRadiusKm = 6371.0;
+    final dLat = (second.latitude - first.latitude) * math.pi / 180.0;
+    final dLng = (second.longitude - first.longitude) * math.pi / 180.0;
+    final originLat = first.latitude * math.pi / 180.0;
+    final targetLat = second.latitude * math.pi / 180.0;
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(originLat) *
+            math.cos(targetLat) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  bool _shouldFetchHotels(LatLng center, {bool force = false}) {
+    if (force || _lastFetchedCenter == null) {
+      return true;
+    }
+    return _distanceKm(_lastFetchedCenter!, center) >= 0.8;
+  }
 
   void _handleAuthFailure() {
     AuthService.clearSession();
@@ -119,16 +146,22 @@ class _HotelMapPageState extends State<HotelMapPage> {
         final data = jsonDecode(response.body);
         final lat = data['lat'] as double;
         final lng = data['lng'] as double;
+        final target = LatLng(lat, lng);
         final controller = await _controller.future;
-        await controller.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: LatLng(lat, lng), zoom: 14),
-          ),
-        );
+        _currentCenter = target;
+        _skipNextCameraIdleFetch = true;
         setState(() {
           _suggestions = [];
           _searchFocus.unfocus();
         });
+        await Future.wait([
+          controller.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(target: target, zoom: 14),
+            ),
+          ),
+          _fetchHotels(target, force: true),
+        ]);
       } else {
         debugPrint('[Places] details error ${response.statusCode}: ${response.body}');
       }
@@ -137,7 +170,12 @@ class _HotelMapPageState extends State<HotelMapPage> {
     }
   }
 
-  Future<void> _fetchHotels(LatLng center) async {
+  Future<void> _fetchHotels(LatLng center, {bool force = false}) async {
+    if (!_shouldFetchHotels(center, force: force)) {
+      return;
+    }
+
+    final requestId = ++_hotelRequestId;
     setState(() => _loading = true);
     String? token = await _getToken();
     final uri = Uri.parse('${AppConfig.baseUrl}/api/hotels/search/').replace(
@@ -165,6 +203,9 @@ class _HotelMapPageState extends State<HotelMapPage> {
         final data = jsonDecode(response.body);
         final hotels = data['hotels'] as List<dynamic>;
         final warning = data['warning'] as String?;
+        if (!mounted || requestId != _hotelRequestId) {
+          return;
+        }
         if (warning != null && warning.isNotEmpty) {
           debugPrint('[Hotels] warning: $warning');
         }
@@ -191,21 +232,16 @@ class _HotelMapPageState extends State<HotelMapPage> {
           _markers = newMarkers;
           _hotelCount = newMarkers.length;
         });
+        _lastFetchedCenter = center;
       } else {
         debugPrint('[Hotels] search error ${response.statusCode}: ${response.body}');
-        setState(() {
-          _markers = {};
-          _hotelCount = 0;
-        });
       }
     } catch (e) {
       debugPrint('[Hotels] search exception: $e');
-      setState(() {
-        _markers = {};
-        _hotelCount = 0;
-      });
     } finally {
-      setState(() => _loading = false);
+      if (mounted && requestId == _hotelRequestId) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -214,8 +250,12 @@ class _HotelMapPageState extends State<HotelMapPage> {
   }
 
   void _onCameraIdle() {
+    if (_skipNextCameraIdleFetch) {
+      _skipNextCameraIdleFetch = false;
+      return;
+    }
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 800), () {
+    _debounce = Timer(const Duration(milliseconds: 450), () {
       _fetchHotels(_currentCenter);
     });
   }
