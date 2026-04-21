@@ -143,9 +143,13 @@ out center 80;
 
         for overpass_url in OVERPASS_URLS:
             try:
-                response = requests.get(
+                response = requests.post(
                     overpass_url,
-                    params={'data': overpass_query},
+                    data={'data': overpass_query},
+                    headers={
+                        'Accept': 'application/json',
+                        'User-Agent': 'trip-plannerv2/1.0',
+                    },
                     timeout=10,
                 )
                 response.raise_for_status()
