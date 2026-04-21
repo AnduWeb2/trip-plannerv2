@@ -25,6 +25,7 @@ class _HotelMapPageState extends State<HotelMapPage> {
   bool _loading = false;
   Timer? _debounce;
   Set<Marker> _markers = {};
+  int _hotelCount = 0;
 
   // Camera tracking
   LatLng _currentCenter = const LatLng(44.4268, 26.1025);
@@ -163,10 +164,15 @@ class _HotelMapPageState extends State<HotelMapPage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final hotels = data['hotels'] as List<dynamic>;
+        debugPrint('[Hotels] received ${hotels.length} hotels from API');
         final newMarkers = <Marker>{};
         for (final h in hotels) {
-          final lat = (h['lat'] as num).toDouble();
-          final lng = (h['lng'] as num).toDouble();
+          final latRaw = h['lat'];
+          final lngRaw = h['lng'];
+          debugPrint('[Hotels] hotel: ${h['name']} lat=$latRaw lng=$lngRaw');
+          if (latRaw == null || lngRaw == null) continue;
+          final lat = (latRaw as num).toDouble();
+          final lng = (lngRaw as num).toDouble();
           final name = h['name'] as String? ?? 'Hotel';
           final address = h['address'] as String? ?? '';
           newMarkers.add(Marker(
@@ -176,7 +182,11 @@ class _HotelMapPageState extends State<HotelMapPage> {
             onTap: () => _showHotelBottomSheet(name, address),
           ));
         }
-        setState(() => _markers = newMarkers);
+        debugPrint('[Hotels] placing ${newMarkers.length} markers on map');
+        setState(() {
+          _markers = newMarkers;
+          _hotelCount = newMarkers.length;
+        });
       } else {
         debugPrint('[Hotels] search error ${response.statusCode}: ${response.body}');
       }
@@ -327,6 +337,22 @@ class _HotelMapPageState extends State<HotelMapPage> {
               right: 0,
               child: Center(child: CircularProgressIndicator()),
             ),
+          Positioned(
+            bottom: 24,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+              ),
+              child: Text(
+                _loading ? 'Se caută...' : '$_hotelCount hoteluri găsite',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ),
         ],
       ),
     );
