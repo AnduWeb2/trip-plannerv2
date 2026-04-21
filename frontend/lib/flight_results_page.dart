@@ -11,7 +11,11 @@ class FlightResultsPage extends StatelessWidget {
   });
 
   Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      debugPrint('Blocked unsafe URL: $url');
+      return;
+    }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       debugPrint('Could not launch $url');
     }
@@ -32,7 +36,7 @@ class FlightResultsPage extends StatelessWidget {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: flights.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              separatorBuilder: (_, _) => const SizedBox(height: 16),
               itemBuilder: (context, idx) {
                 final flight = flights[idx];
                 final display = (flight['display'] as Map?) ?? {};

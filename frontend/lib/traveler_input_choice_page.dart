@@ -63,7 +63,7 @@ class TravelerInputChoicePage extends StatelessWidget {
               onTap: () => _onScanDocument(context),
             ),
           ],
-        ),
+        ), 
       ),
     );
   }

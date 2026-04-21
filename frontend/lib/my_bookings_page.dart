@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
+import 'services/auth_service.dart';
 
 class MyBookingsPage extends StatefulWidget {
   const MyBookingsPage({super.key});
@@ -39,7 +40,7 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
       http.Response response = await sendRequest(token);
 
       if (response.statusCode == 401) {
-        final refreshed = await _refreshAccessToken();
+        final refreshed = await AuthService.refreshAccessToken();
         if (refreshed != null) {
           response = await sendRequest(refreshed);
         }
@@ -102,7 +103,7 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
       http.Response response = await sendRequest(token);
 
       if (response.statusCode == 401) {
-        final refreshed = await _refreshAccessToken();
+        final refreshed = await AuthService.refreshAccessToken();
         if (refreshed != null) {
           response = await sendRequest(refreshed);
         }
@@ -148,33 +149,6 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
     }
   }
 
-  Future<String?> _refreshAccessToken() async {
-    try {
-      final refreshToken = await storage.read(key: 'refresh_token');
-      if (refreshToken == null) return null;
-
-      final response = await http.post(
-        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh': refreshToken}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final newAccess = data['access'] as String?;
-        final newRefresh = data['refresh'] as String?;
-        if (newAccess != null) {
-          await storage.write(key: 'access_token', value: newAccess);
-          if (newRefresh != null) {
-            await storage.write(key: 'refresh_token', value: newRefresh);
-          }
-          return newAccess;
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -213,7 +187,7 @@ class _MyBookingsPageState extends State<MyBookingsPage> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: bookings.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
                     itemBuilder: (context, idx) {
                       final b = bookings[idx];
                       return _BookingCard(
@@ -365,7 +339,8 @@ class _BookingCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: InkWell(
                 onTap: () async {
-                  final uri = Uri.parse(checkinLink);
+                  final uri = Uri.tryParse(checkinLink);
+                  if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) return;
                   if (await canLaunchUrl(uri)) {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }

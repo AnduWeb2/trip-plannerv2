@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'config.dart';
+import 'services/auth_service.dart';
 import 'widgets/custom_button.dart';
 import 'widgets/custom_text_field.dart';
 
@@ -145,33 +146,6 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
   String _formatDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  Future<String?> _refreshAccessToken() async {
-    try {
-      final refreshToken = await storage.read(key: 'refresh_token');
-      if (refreshToken == null) return null;
-
-      final response = await http.post(
-        Uri.parse('${AppConfig.baseUrl}/user/api/token/refresh/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh': refreshToken}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final newAccess = data['access'] as String?;
-        final newRefresh = data['refresh'] as String?;
-        if (newAccess != null) {
-          await storage.write(key: 'access_token', value: newAccess);
-          if (newRefresh != null) {
-            await storage.write(key: 'refresh_token', value: newRefresh);
-          }
-          return newAccess;
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
   Future<void> _submit() async {
     final isEdit = widget.traveler != null;
 
@@ -260,7 +234,7 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
       http.Response response = await sendRequest(token);
 
       if (response.statusCode == 401) {
-        final refreshed = await _refreshAccessToken();
+        final refreshed = await AuthService.refreshAccessToken();
         if (refreshed != null) {
           token = refreshed;
           response = await sendRequest(token);
@@ -361,7 +335,7 @@ class _AddTravelerPageState extends State<AddTravelerPage> {
       http.Response response = await sendRequest(token);
 
       if (response.statusCode == 401) {
-        final refreshed = await _refreshAccessToken();
+        final refreshed = await AuthService.refreshAccessToken();
         if (refreshed != null) {
           token = refreshed;
           response = await sendRequest(token);

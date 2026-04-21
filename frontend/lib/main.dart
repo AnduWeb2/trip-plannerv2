@@ -5,6 +5,7 @@ import 'register_page.dart';
 import 'main_shell.dart';
 import 'manage_profile_page.dart';
 import 'add_traveler_page.dart';
+import 'route_guard.dart';
 
 void main() {
   runApp(const MyApp());
@@ -104,9 +105,9 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginPage(),
         '/register': (context) => const RegisterPage(),
-        '/home': (context) => const MainShell(),
-        '/manage-profile': (context) => const ManageProfilePage(),
-        '/add-traveler': (context) => const AddTravelerPage(),
+        '/home': (context) => const RouteGuard(child: MainShell()),
+        '/manage-profile': (context) => const RouteGuard(child: ManageProfilePage()),
+        '/add-traveler': (context) => const RouteGuard(child: AddTravelerPage()),
       },
     );
   }
