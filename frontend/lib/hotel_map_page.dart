@@ -43,6 +43,13 @@ class _HotelMapPageState extends State<HotelMapPage> {
 
   Future<String?> _getToken() => _storage.read(key: 'access_token');
 
+  void _handleAuthFailure() {
+    AuthService.clearSession();
+    if (mounted) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+    }
+  }
+
   Future<void> _fetchSuggestions(String input) async {
     if (input.isEmpty) {
       setState(() => _suggestions = []);
@@ -59,6 +66,10 @@ class _HotelMapPageState extends State<HotelMapPage> {
       });
       if (response.statusCode == 401) {
         token = await AuthService.refreshAccessToken();
+        if (token == null) {
+          _handleAuthFailure();
+          return;
+        }
         response = await http.get(uri, headers: {
           'Authorization': 'Bearer $token',
         });
@@ -95,6 +106,10 @@ class _HotelMapPageState extends State<HotelMapPage> {
       });
       if (response.statusCode == 401) {
         token = await AuthService.refreshAccessToken();
+        if (token == null) {
+          _handleAuthFailure();
+          return;
+        }
         response = await http.get(uri, headers: {
           'Authorization': 'Bearer $token',
         });
@@ -137,6 +152,10 @@ class _HotelMapPageState extends State<HotelMapPage> {
       });
       if (response.statusCode == 401) {
         token = await AuthService.refreshAccessToken();
+        if (token == null) {
+          _handleAuthFailure();
+          return;
+        }
         response = await http.get(uri, headers: {
           'Authorization': 'Bearer $token',
         });

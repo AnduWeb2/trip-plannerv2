@@ -103,8 +103,21 @@ def hotel_search(request):
         output = HotelResultSerializer(raw_hotels, many=True)
         return Response({'hotels': output.data})
     except ResponseError as error:
-        return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        # Log full details for debugging
+        try:
+            err_status = error.response.status_code
+            err_body = error.response.body
+        except Exception:
+            err_status = 'unknown'
+            err_body = str(error)
+        print(f'[hotel_search] Amadeus ResponseError status={err_status} body={err_body}')
+        # Amadeus test environment returns 500 for areas with no test data.
+        # Return empty list so the map shows gracefully instead of an error.
+        if str(err_status) == '500':
+            return Response({'hotels': [], 'warning': 'No hotel data available for this area in test environment.'})
+        return Response({'error': str(error), 'detail': str(err_body)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        print(f'[hotel_search] Unexpected error: {e}')
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
