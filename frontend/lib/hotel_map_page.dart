@@ -26,6 +26,9 @@ class _HotelMapPageState extends State<HotelMapPage> {
   Timer? _debounce;
   Set<Marker> _markers = {};
 
+  // Camera tracking
+  LatLng _currentCenter = const LatLng(44.4268, 26.1025);
+
   // Search bar state
   final TextEditingController _searchController = TextEditingController();
   List<_PlaceSuggestion> _suggestions = [];
@@ -118,31 +121,65 @@ class _HotelMapPageState extends State<HotelMapPage> {
     }
   }
 
+  Future<void> _fetchHotels(LatLng center) async {
+    setState(() => _loading = true);
+    String? token = await _getToken();
+    final uri = Uri.parse('${AppConfig.baseUrl}/api/hotels/search/').replace(
+      queryParameters: {
+        'lat': center.latitude.toString(),
+        'lng': center.longitude.toString(),
+        'radius': '5',
+      },
+    );
+    try {
+      http.Response response = await http.get(uri, headers: {
+        'Authorization': 'Bearer $token',
+      });
+      if (response.statusCode == 401) {
+        token = await AuthService.refreshAccessToken();
+        response = await http.get(uri, headers: {
+          'Authorization': 'Bearer $token',
+        });
+      }
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final hotels = data['hotels'] as List<dynamic>;
+        final newMarkers = <Marker>{};
+        for (final h in hotels) {
+          final lat = (h['lat'] as num).toDouble();
+          final lng = (h['lng'] as num).toDouble();
+          final name = h['name'] as String? ?? 'Hotel';
+          final address = h['address'] as String? ?? '';
+          newMarkers.add(Marker(
+            markerId: MarkerId(h['hotelId'] as String? ?? name),
+            position: LatLng(lat, lng),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+            onTap: () => _showHotelBottomSheet(name, address),
+          ));
+        }
+        setState(() => _markers = newMarkers);
+      } else {
+        debugPrint('[Hotels] search error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[Hotels] search exception: $e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  void _onCameraMove(CameraPosition position) {
+    _currentCenter = position.target;
+  }
+
   void _onCameraIdle() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () async {
-      setState(() => _loading = true);
-      
-      await Future.delayed(const Duration(seconds: 1));
-      setState(() {
-        _markers = {
-          Marker(
-            markerId: const MarkerId('hotel1'),
-            position: const LatLng(44.4325, 26.1039),
-            onTap: () => _showHotelBottomSheet('Hotel Central', '120 EUR/noapte'),
-          ),
-          Marker(
-            markerId: const MarkerId('hotel2'),
-            position: const LatLng(44.4268, 26.1025),
-            onTap: () => _showHotelBottomSheet('Hotel Lux', '200 EUR/noapte'),
-          ),
-        };
-        _loading = false;
-      });
+    _debounce = Timer(const Duration(milliseconds: 800), () {
+      _fetchHotels(_currentCenter);
     });
   }
 
-  void _showHotelBottomSheet(String name, String price) {
+  void _showHotelBottomSheet(String name, String address) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -156,7 +193,8 @@ class _HotelMapPageState extends State<HotelMapPage> {
           children: [
             Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(price, style: const TextStyle(fontSize: 16, color: Colors.blue)),
+            if (address.isNotEmpty)
+              Text(address, style: const TextStyle(fontSize: 14, color: Colors.grey)),
           ],
         ),
       ),
@@ -180,6 +218,7 @@ class _HotelMapPageState extends State<HotelMapPage> {
           GoogleMap(
             initialCameraPosition: _initialPosition,
             onMapCreated: (controller) => _controller.complete(controller),
+            onCameraMove: _onCameraMove,
             onCameraIdle: _onCameraIdle,
             markers: _markers,
             myLocationEnabled: true,
@@ -199,7 +238,7 @@ class _HotelMapPageState extends State<HotelMapPage> {
                     controller: _searchController,
                     focusNode: _searchFocus,
                     decoration: InputDecoration(
-                      hintText: 'Caută o zonă...',
+                      hintText: 'Caută o zonă sau un hotel...',
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: _searchLoading
                           ? const Padding(

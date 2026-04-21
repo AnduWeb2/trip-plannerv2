@@ -3,66 +3,109 @@ from flights.views import get_amadeus_client
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from amadeus import ResponseError
 import requests
 import os
+from .serializers import (
+    PlacesAutocompleteInputSerializer,
+    PlaceSuggestionSerializer,
+    PlacesDetailsInputSerializer,
+    PlacesDetailsOutputSerializer,
+    HotelSearchInputSerializer,
+    HotelResultSerializer,
+)
 
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 
 
 @api_view(['GET'])
 def places_autocomplete(request):
-    
-    input_text = request.query_params.get('q', '').strip()
-    if not input_text:
-        return Response({'error': 'Query param "q" is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    input_ser = PlacesAutocompleteInputSerializer(data=request.query_params)
+    if not input_ser.is_valid():
+        return Response(input_ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
     url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
     params = {
-        'input': input_text,
+        'input': input_ser.validated_data['q'],
         'key': GOOGLE_MAPS_API_KEY,
         'language': 'ro',
     }
     try:
         resp = requests.get(url, params=params, timeout=5)
         resp.raise_for_status()
-        data = resp.json()
-        predictions = [
+        raw = resp.json()
+        suggestions = [
             {'placeId': p['place_id'], 'description': p['description']}
-            for p in data.get('predictions', [])
+            for p in raw.get('predictions', [])
         ]
-        return Response({'predictions': predictions})
+        output = PlaceSuggestionSerializer(suggestions, many=True)
+        return Response({'predictions': output.data})
     except requests.RequestException as e:
         return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 @api_view(['GET'])
 def places_details(request):
-    
-    place_id = request.query_params.get('place_id', '').strip()
-    if not place_id:
-        return Response({'error': 'Query param "place_id" is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    input_ser = PlacesDetailsInputSerializer(data=request.query_params)
+    if not input_ser.is_valid():
+        return Response(input_ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
     url = 'https://maps.googleapis.com/maps/api/place/details/json'
     params = {
-        'place_id': place_id,
+        'place_id': input_ser.validated_data['place_id'],
         'fields': 'geometry',
         'key': GOOGLE_MAPS_API_KEY,
     }
     try:
         resp = requests.get(url, params=params, timeout=5)
         resp.raise_for_status()
-        data = resp.json()
-        location = data.get('result', {}).get('geometry', {}).get('location')
+        raw = resp.json()
+        location = raw.get('result', {}).get('geometry', {}).get('location')
         if not location:
             return Response({'error': 'Location not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response({'lat': location['lat'], 'lng': location['lng']})
+        output = PlacesDetailsOutputSerializer(data={'lat': location['lat'], 'lng': location['lng']})
+        output.is_valid()
+        return Response(output.data)
     except requests.RequestException as e:
         return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 @api_view(['GET'])
 def hotel_search(request):
-    pass
+    input_ser = HotelSearchInputSerializer(data=request.query_params)
+    if not input_ser.is_valid():
+        return Response(input_ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    lat = input_ser.validated_data['lat']
+    lng = input_ser.validated_data['lng']
+    radius = input_ser.validated_data['radius']
+
+    try:
+        amadeus = get_amadeus_client()
+        response = amadeus.reference_data.locations.hotels.by_geocode.get(
+            latitude=lat,
+            longitude=lng,
+            radius=radius,
+            radiusUnit='KM',
+        )
+        raw_hotels = [
+            {
+                'hotelId': h.get('hotelId', ''),
+                'name': h.get('name', ''),
+                'lat': h.get('geoCode', {}).get('latitude'),
+                'lng': h.get('geoCode', {}).get('longitude'),
+                'address': ', '.join(h.get('address', {}).get('lines', [])),
+                'countryCode': h.get('address', {}).get('countryCode', ''),
+            }
+            for h in response.data
+            if h.get('geoCode', {}).get('latitude') and h.get('geoCode', {}).get('longitude')
+        ]
+        output = HotelResultSerializer(raw_hotels, many=True)
+        return Response({'hotels': output.data})
+    except ResponseError as error:
+        return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 def hotel_offers(request):
