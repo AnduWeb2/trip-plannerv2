@@ -89,15 +89,33 @@ out center 150;
 '''
 
     try:
-        response = requests.post(
+        elements = []
+        overpass_urls = [
             'https://overpass-api.de/api/interpreter',
-            data=overpass_query,
-            headers={'Content-Type': 'text/plain'},
-            timeout=25,
-        )
-        response.raise_for_status()
-        elements = response.json().get('elements', [])
-        print(f'[hotel_search] Overpass returned {len(elements)} elements for lat={lat} lng={lng} radius={radius_km}km')
+            'https://overpass.kumi.systems/api/interpreter',
+        ]
+        last_error = None
+
+        for overpass_url in overpass_urls:
+            try:
+                response = requests.post(
+                    overpass_url,
+                    data={'data': overpass_query},
+                    timeout=25,
+                )
+                response.raise_for_status()
+                elements = response.json().get('elements', [])
+                print(
+                    f'[hotel_search] Overpass returned {len(elements)} elements '
+                    f'from {overpass_url} for lat={lat} lng={lng} radius={radius_km}km'
+                )
+                break
+            except requests.RequestException as e:
+                last_error = e
+                print(f'[hotel_search] Overpass request failed for {overpass_url}: {e}')
+
+        if last_error and not elements:
+            raise last_error
 
         hotels_by_id = {}
         for element in elements:
